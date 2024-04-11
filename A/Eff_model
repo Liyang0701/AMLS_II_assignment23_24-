@@ -1,0 +1,97 @@
+from sklearn.utils import class_weight
+from sklearn.metrics import confusion_matrix, classification_report
+from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.applications import EfficientNetB0 
+from tensorflow.keras.losses import CategoricalCrossentropy
+from tensorflow.keras import layers,models
+from tensorflow.keras.optimizers import Adam
+import numpy as np
+from PIL import Image
+import pandas as pd
+import tensorflow as tf
+import matplotlib.pyplot as plt
+import os
+
+def create_model(target_size_dim):
+    # Create a Sequential model with EfficientNetB0 as the base
+    model = models.Sequential()
+    model.add(EfficientNetB0(include_top=False, weights='imagenet', input_shape=(target_size_dim, target_size_dim, 3), drop_connect_rate=0.3))
+    model.add(layers.GlobalAveragePooling2D())
+    model.add(layers.Flatten())
+    model.add(layers.Dense(256, activation="relu"))
+    model.add(layers.Dropout(0.3))
+    model.add(layers.Dense(128, activation="relu"))
+    model.add(layers.Dropout(0.3))
+    model.add(layers.Dense(64, activation="relu"))
+    model.add(layers.Dropout(0.2))
+    model.add(layers.Dense(5, activation='softmax'))
+
+    # Configure the model's loss and optimizer
+    loss = tf.keras.losses.CategoricalCrossentropy(label_smoothing=0.001, name='categorical_crossentropy')
+    model.compile(optimizer=Adam(learning_rate=1e-3), loss=loss, metrics=["categorical_accuracy"])
+    return model
+
+def callbacks():
+    # Define learning rate reduction, early stopping, and model checkpoint callbacks
+    reducelr = tf.keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.7, min_lr=1e-6, patience=3, verbose=1)
+    earlystop = tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=3, verbose=1, restore_best_weights=True)
+    model_check = ModelCheckpoint("best_model.keras", monitor="val_loss", verbose=1, save_best_only=True, mode="min")
+    return reducelr, earlystop, model_check
+
+def class_weights(train_df):
+    # Compute class weights to balance the dataset
+    class_weights = class_weight.compute_class_weight('balanced', classes=np.unique(train_df['label']), y=train_df['label'])
+    class_weights = dict(enumerate(class_weights))
+    class_weights[0] *= 1.5
+    class_weights[1] *= 1.25
+    class_weights[2] *= 1.25
+    class_weights[4] *= 1.25
+    return class_weights
+
+def training(model, train_generator, valid_generator, STEPS_PER_EPOCH, VALIDATION_STEPS, reducelr, earlystop, model_check):
+    # Train the model with given generators and callbacks
+    history = model.fit(
+        train_generator,
+        steps_per_epoch=STEPS_PER_EPOCH,
+        epochs=20,
+        validation_data=valid_generator,
+        validation_steps=VALIDATION_STEPS,
+        callbacks=[reducelr, earlystop, model_check],
+        class_weight=class_weights
+    )
+    return history
+
+def acc_and_loss_plot(history):
+    # Plot accuracy and loss for training and validation
+    metrics = ['categorical_accuracy', 'loss']
+    titles = ['Accuracy', 'Loss']
+    for i, metric in enumerate(metrics):
+        plt.figure(figsize=(15, 5))
+        plt.plot(history.history[metric], label=f"train_{metric}")
+        plt.plot(history.history[f'val_{metric}'], label=f"val_{metric}")
+        plt.title(f"Train vs Validation {titles[i]}")
+        plt.ylabel(titles[i])
+        plt.xlabel("Epochs")
+        plt.legend()
+        plt.show()
+
+def report_and_matrix(model, valid_generator):
+    # Load the best model and predict on the validation set
+    model.load_weights("best_model.keras")
+    pred_valid_y = model.predict(valid_generator, verbose=1)
+    pred_valid_y_labels = np.argmax(pred_valid_y, axis=-1)
+    valid_labels = valid_generator.labels
+
+    # Print classification report and confusion matrix
+    print(classification_report(valid_labels, pred_valid_y_labels))
+    print(confusion_matrix(valid_labels, pred_valid_y_labels))
+
+def submission(test_df, model, target_size_dim):
+    # Predict labels for test dataset and create submission file
+    preds = []
+    for image_id in test_df.image_id:
+        image = Image.open(os.path.join("./Datasets/test_images", image_id)).resize((target_size_dim, target_size_dim))
+        image = np.expand_dims(image, axis=0)
+        preds.append(np.argmax(model.predict(image)))
+    test_df['label'] = preds
+    test_df.to_csv('submission.csv', index=False)
