@@ -11,14 +11,14 @@ warnings.simplefilter("ignore")
 
 def router():
     # Load training and test datasets
-    train_df = pd.read_csv('./train.csv')
-    test_df = pd.read_csv('./sample_submission.csv')
+    train_df = pd.read_csv('./Datasets/train.csv')
+    test_df = pd.read_csv('./Datasets/sample_submission.csv')
     return train_df, test_df
 
 def EDA(train_df):
     # Count instances of each label and sort them
     label_counts = train_df['label'].value_counts().sort_index()
-    disease_name_path = './label_num_to_disease_map.json'
+    disease_name_path = './Datasets/label_num_to_disease_map.json'
 
     # Load mapping of label numbers to disease names
     with open(disease_name_path, 'r') as file:
@@ -58,7 +58,7 @@ def EDA(train_df):
         sample_images = train_df[train_df['label'] == label].sample(3)['image_id'].values
         for i, image_id in enumerate(sample_images):
             plt.subplot(5, 3, label * 3 + i + 1)
-            with Image.open(os.path.join("./train_images", image_id)) as img:
+            with Image.open(os.path.join("./Datasets/train_images", image_id)) as img:
                 plt.imshow(img)
                 plt.axis("off")
             if i == 1:
@@ -85,11 +85,11 @@ def data_preprocess(train_df):
                                     channel_shift_range=0.2,
                                     horizontal_flip=True,
                                     vertical_flip=True,
-                                    validation_split=0.3
+                                    validation_split=0.2
     ) \
         .flow_from_dataframe(
                             train_df,
-                            directory ="./train_images",
+                            directory ="./Datasets/train_images",
                             x_col = "image_id",
                             y_col = "label",
                             target_size = (target_size_dim, target_size_dim),
@@ -102,10 +102,10 @@ def data_preprocess(train_df):
     )   
         
     # Configure validation data generator
-    valid_generator = ImageDataGenerator(validation_split=0.3)\
+    valid_generator = ImageDataGenerator(validation_split=0.2)\
             .flow_from_dataframe(
                             train_df,
-                            directory="./train_images",
+                            directory="./Datasets/train_images",
                             x_col="image_id",
                             y_col="label",
                             target_size=(target_size_dim, target_size_dim),
