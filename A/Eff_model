@@ -1,5 +1,5 @@
 from sklearn.utils import class_weight
-from sklearn.metrics import confusion_matrix, classification_report
+from sklearn.metrics import classification_report
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 from tensorflow.keras.applications import EfficientNetB0 
 from tensorflow.keras.losses import CategoricalCrossentropy
@@ -34,7 +34,7 @@ def create_model(target_size_dim):
 def callbacks():
     # Define learning rate reduction, early stopping, and model checkpoint callbacks
     reducelr = tf.keras.callbacks.ReduceLROnPlateau(monitor="val_loss", factor=0.7, min_lr=1e-6, patience=3, verbose=1)
-    earlystop = tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=3, verbose=1, restore_best_weights=True)
+    earlystop = tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=4, verbose=1, restore_best_weights=True)
     model_check = ModelCheckpoint("best_model.keras", monitor="val_loss", verbose=1, save_best_only=True, mode="min")
     return reducelr, earlystop, model_check
 
@@ -83,8 +83,7 @@ def report_and_matrix(model, valid_generator):
     valid_labels = valid_generator.labels
 
     # Print classification report and confusion matrix
-    print(classification_report(valid_labels, pred_valid_y_labels))
-    print(confusion_matrix(valid_labels, pred_valid_y_labels))
+    print(classification_report(valid_labels, pred_valid_y_labels)
 
 def submission(test_df, model, target_size_dim):
     # Predict labels for test dataset and create submission file
