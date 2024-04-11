@@ -1,0 +1,119 @@
+import numpy as np
+import json
+import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from PIL import Image
+import warnings
+warnings.simplefilter("ignore")
+
+def router():
+    # Load training and test datasets
+    train_df = pd.read_csv('./train.csv')
+    test_df = pd.read_csv('./sample_submission.csv')
+    return train_df, test_df
+
+def EDA(train_df):
+    # Count instances of each label and sort them
+    label_counts = train_df['label'].value_counts().sort_index()
+    disease_name_path = './label_num_to_disease_map.json'
+
+    # Load mapping of label numbers to disease names
+    with open(disease_name_path, 'r') as file:
+        label_map = json.load(file)
+
+    # Map labels to disease names for plotting
+    label_names = [label_map[str(label)] for label in sorted(label_map.keys(), key=int)]
+
+    # Assign colors to each label for the plot
+    colors = {0: 'blue', 1: 'orange', 2: 'green', 3: 'red', 4: 'purple'}
+
+    # Plot distribution of images by label
+    plt.figure(figsize=(10, 6))
+    bars = plt.bar(label_counts.index.astype(str), label_counts.values, 
+               color=[colors[label] for label in label_counts.index])
+
+    # Annotate bars with value labels
+    for bar in bars:
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2, yval, int(yval), va='bottom', ha='center')
+
+    # Set plot labels and title
+    plt.xlabel('Labels')
+    plt.ylabel('Count of Images')
+    plt.title('Distribution of Cassava Images')
+    plt.xticks(label_counts.index.astype(str))
+    plt.legend(bars, label_names, title='Disease')
+    plt.show()
+
+    # Print percentage of images per label and total image count
+    print(np.round((train_df['label'].value_counts()/len(train_df['label']))*100, 2))
+    print(len(train_df))
+
+    # Display sample images for each label
+    plt.figure(figsize=(12, 20))
+    for label in train_df['label'].unique():
+        sample_images = train_df[train_df['label'] == label].sample(3)['image_id'].values
+        for i, image_id in enumerate(sample_images):
+            plt.subplot(5, 3, label * 3 + i + 1)
+            with Image.open(os.path.join("./train_images", image_id)) as img:
+                plt.imshow(img)
+                plt.axis("off")
+            if i == 1:
+                plt.title(f'Label {label}', fontsize=20)
+    plt.tight_layout()
+    plt.show()
+    
+
+def data_preprocess(train_df):
+    # Define target image size
+    target_size_dim = 512
+
+    # Convert labels to string type
+    train_df['label'] = train_df['label'].astype('str')
+
+    # Configure training data generator with data augmentation
+    train_generator = ImageDataGenerator(
+                                    rotation_range=270,
+                                    width_shift_range=0.2,
+                                    height_shift_range=0.2,
+                                    brightness_range=[0.1,0.9],
+                                    shear_range=25,
+                                    zoom_range=0.3,
+                                    channel_shift_range=0.2,
+                                    horizontal_flip=True,
+                                    vertical_flip=True,
+                                    validation_split=0.3
+    ) \
+        .flow_from_dataframe(
+                            train_df,
+                            directory ="./train_images",
+                            x_col = "image_id",
+                            y_col = "label",
+                            target_size = (target_size_dim, target_size_dim),
+                            color_mode = "rgb",
+                            class_mode = "categorical",
+                            batch_size = 64,
+                            shuffle = True,
+                            seed = 34,
+                            subset = "training",
+    )   
+        
+    # Configure validation data generator
+    valid_generator = ImageDataGenerator(validation_split=0.3)\
+            .flow_from_dataframe(
+                            train_df,
+                            directory="./train_images",
+                            x_col="image_id",
+                            y_col="label",
+                            target_size=(target_size_dim, target_size_dim),
+                            color_mode="rgb",
+                            class_mode="categorical",
+                            batch_size=64,
+                            shuffle=True,
+                            seed=34,
+                            subset="validation")
+            
+    return train_generator, valid_generator, target_size_dim
